@@ -1,0 +1,7 @@
+# C build artifacts
+agent_host/agent_host
+*.o
+# Python
+__pycache__/
+*.pyc
+.venv/

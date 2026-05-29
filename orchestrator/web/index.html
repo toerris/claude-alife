@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ALIFE · Supervisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070b0f; --panel:rgba(10,17,23,.82); --edge:rgba(80,210,220,.18);
+    --ink:#cfe9ee; --dim:#5d7c84; --accent:#36e0d4; --accent2:#ffb347; --grid:rgba(54,224,212,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Mono",ui-monospace,monospace;overflow:hidden}
+  #scene{position:fixed;inset:0}
+  /* subtle scan-grid atmosphere behind everything */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      linear-gradient(transparent 0 31px,var(--grid) 31px 32px),
+      linear-gradient(90deg,transparent 0 31px,var(--grid) 31px 32px);
+    background-size:32px 32px;mix-blend-mode:screen}
+  .hud{position:fixed;z-index:5}
+  .panel{background:var(--panel);backdrop-filter:blur(9px);
+    border:1px solid var(--edge);border-radius:10px;
+    box-shadow:0 20px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.04)}
+  /* header */
+  #top{top:18px;left:18px;padding:14px 18px}
+  #top h1{font-family:"Chakra Petch",sans-serif;font-weight:700;margin:0;
+    font-size:17px;letter-spacing:.22em;color:#eafcff}
+  #top h1 b{color:var(--accent)}
+  #top .sub{color:var(--dim);font-size:11px;letter-spacing:.18em;margin-top:3px}
+  /* readouts */
+  #stats{top:18px;right:18px;padding:14px 16px;min-width:220px}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;
+    border-bottom:1px dashed rgba(93,124,132,.18);font-size:12px}
+  .stat:last-child{border:0}
+  .stat .k{color:var(--dim);letter-spacing:.12em}
+  .stat .v{color:var(--accent);font-weight:600;font-variant-numeric:tabular-nums}
+  /* controls */
+  #ctl{bottom:18px;left:18px;padding:14px 16px;width:300px}
+  .row{display:flex;align-items:center;gap:10px;margin:9px 0}
+  .label{font-size:11px;color:var(--dim);letter-spacing:.12em;min-width:118px;
+    text-transform:uppercase}
+  .val{font-size:11px;color:var(--ink);min-width:46px;text-align:right;
+    font-variant-numeric:tabular-nums}
+  input[type=range]{-webkit-appearance:none;flex:1;height:3px;border-radius:3px;
+    background:linear-gradient(90deg,var(--accent),#0d5b58);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;
+    border-radius:50%;background:#eafcff;border:2px solid var(--accent);cursor:pointer;
+    box-shadow:0 0 8px rgba(54,224,212,.7)}
+  button{font-family:inherit;background:transparent;color:var(--ink);
+    border:1px solid var(--edge);border-radius:7px;padding:7px 14px;cursor:pointer;
+    letter-spacing:.12em;font-size:12px;transition:.15s}
+  button:hover{border-color:var(--accent);color:#eafcff;box-shadow:0 0 12px rgba(54,224,212,.25)}
+  button.live{color:var(--accent2);border-color:rgba(255,179,71,.5)}
+  .sectn{font-family:"Chakra Petch",sans-serif;font-size:10px;letter-spacing:.28em;
+    color:var(--dim);margin:14px 0 4px;text-transform:uppercase;
+    border-top:1px solid rgba(93,124,132,.2);padding-top:10px}
+  #ctl .sectn:first-child{border:0;padding-top:0;margin-top:0}
+  .hint{position:fixed;bottom:18px;right:18px;z-index:5;color:var(--dim);font-size:10px;
+    letter-spacing:.14em;text-align:right;line-height:1.7}
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div class="hud panel" id="top">
+  <h1>ALIFE<b>·</b>SUPERVISOR</h1>
+  <div class="sub">3D WORLD · BODIES ON GPU-MODEL · BRAINS ON HOSTS</div>
+</div>
+
+<div class="hud panel" id="stats">
+  <div class="stat"><span class="k">TICK</span><span class="v" id="s_tick">—</span></div>
+  <div class="stat"><span class="k">POPULATION</span><span class="v" id="s_pop">—</span></div>
+  <div class="stat"><span class="k">FOOD</span><span class="v" id="s_food">—</span></div>
+  <div class="stat"><span class="k">SIM&nbsp;FPS</span><span class="v" id="s_sfps">—</span></div>
+  <div class="stat"><span class="k">RENDER&nbsp;FPS</span><span class="v" id="s_rfps">—</span></div>
+  <div class="stat"><span class="k">AGENT&nbsp;HOSTS</span><span class="v" id="s_hosts">0</span></div>
+</div>
+
+<div class="hud panel" id="ctl">
+  <div class="sectn">Transport</div>
+  <div class="row">
+    <button id="btnPause">⏸ PAUSE</button>
+    <span class="label" style="min-width:0">SPEED</span>
+    <input type="range" id="speed" min="0.1" max="4" step="0.1" value="1">
+    <span class="val" id="speedv">1.0×</span>
+  </div>
+  <div class="sectn">Live Parameters</div>
+  <div id="params"></div>
+</div>
+
+<div class="hint">DRAG orbit · SCROLL zoom · sliders tune the world live<br>WS: <span id="wsstate">connecting…</span></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const AGENT_CAP = 1100, FOOD_CAP = 600;   // mirror config.py CAPACITY / FOOD_CAP
+let WORLD = 200;
+
+// ---- three.js setup ----
+const host = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x070b0f, 1);
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x070b0f, 0.0016);
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 4000);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+
+scene.add(new THREE.AmbientLight(0x9fffff, 0.35));
+const key = new THREE.PointLight(0x66fff0, 1.2, 0, 1.6); key.position.set(WORLD,WORLD*1.4,WORLD); scene.add(key);
+const rim = new THREE.PointLight(0xffb347, 0.5, 0, 1.6); rim.position.set(-WORLD*0.4,WORLD*0.3,-WORLD*0.4); scene.add(rim);
+
+// world bounding box + floor grid
+let boxHelper, grid;
+function buildWorld(size){
+  WORLD = size;
+  if(boxHelper) scene.remove(boxHelper);
+  if(grid) scene.remove(grid);
+  const geo = new THREE.BoxGeometry(size,size,size);
+  const edges = new THREE.EdgesGeometry(geo);
+  boxHelper = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({color:0x36e0d4, transparent:true, opacity:0.32}));
+  boxHelper.position.set(size/2,size/2,size/2);
+  scene.add(boxHelper);
+  grid = new THREE.GridHelper(size, 20, 0x1c6f6a, 0x103734);
+  grid.position.set(size/2,0,size/2);
+  scene.add(grid);
+  controls.target.set(size/2,size/2,size/2);
+  camera.position.set(size*1.7, size*1.25, size*1.7);
+}
+buildWorld(WORLD);
+
+// instanced agents (sphere, coloured by energy) + food
+const sphereGeo = new THREE.SphereGeometry(1.8, 12, 12);
+const agentMat = new THREE.MeshStandardMaterial({roughness:0.35, metalness:0.0});
+const agents = new THREE.InstancedMesh(sphereGeo, agentMat, AGENT_CAP);
+agents.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+agents.count = 0; scene.add(agents);
+
+const foodGeo = new THREE.IcosahedronGeometry(1.0, 0);
+const foodMat = new THREE.MeshStandardMaterial({color:0x2effa0, emissive:0x0e7f55, emissiveIntensity:0.9, roughness:0.4});
+const food = new THREE.InstancedMesh(foodGeo, foodMat, FOOD_CAP);
+food.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+food.count = 0; scene.add(food);
+
+const _m = new THREE.Matrix4(), _c = new THREE.Color();
+function energyColor(e){               // e ~ energy/repro_threshold
+  const h = (210 - Math.min(Math.max(e,0),1.2)/1.2*150)/360;  // blue->yellow
+  _c.setHSL(h, 0.85, 0.55); return _c;
+}
+
+let latest = null, dirty = false;
+function applyState(s){
+  if(s.size && Math.abs(s.size-WORLD)>1e-3) buildWorld(s.size);
+  const a = s.a, n = s.pop;
+  agents.count = n;
+  for(let i=0;i<n;i++){
+    const x=a[i*4], y=a[i*4+1], z=a[i*4+2], e=a[i*4+3];
+    _m.makeTranslation(x,y,z); agents.setMatrixAt(i,_m);
+    agents.setColorAt(i, energyColor(e));
+  }
+  agents.instanceMatrix.needsUpdate = true;
+  if(agents.instanceColor) agents.instanceColor.needsUpdate = true;
+
+  const f = s.f, nf = (f.length/3)|0;
+  food.count = nf;
+  for(let i=0;i<nf;i++){ _m.makeTranslation(f[i*3],f[i*3+1],f[i*3+2]); food.setMatrixAt(i,_m); }
+  food.instanceMatrix.needsUpdate = true;
+
+  document.getElementById('s_tick').textContent = s.t;
+  document.getElementById('s_pop').textContent = n;
+  document.getElementById('s_food').textContent = nf;
+  document.getElementById('s_sfps').textContent = s.sim_fps ?? '—';
+  document.getElementById('s_hosts').textContent = (s.hosts||[]).length;
+}
+
+// ---- websocket ----
+function connect(){
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen  = ()=> document.getElementById('wsstate').textContent='live';
+  ws.onclose = ()=>{ document.getElementById('wsstate').textContent='reconnecting…'; setTimeout(connect,1000); };
+  ws.onmessage = ev =>{ latest = JSON.parse(ev.data); dirty = true; };
+}
+connect();
+
+// ---- render loop ----
+let last = performance.now(), frames = 0, racc = 0;
+function tick(now){
+  requestAnimationFrame(tick);
+  if(dirty && latest){ applyState(latest); dirty=false; }
+  controls.update();
+  renderer.render(scene,camera);
+  frames++; racc += now-last; last = now;
+  if(racc > 500){ document.getElementById('s_rfps').textContent = (frames*1000/racc).toFixed(0); frames=0; racc=0; }
+}
+requestAnimationFrame(tick);
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---- transport ----
+let paused = false;
+const btn = document.getElementById('btnPause');
+btn.onclick = async ()=>{
+  paused = !paused;
+  btn.textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
+  btn.classList.toggle('live', paused);
+  await post('/api/control', {paused});
+};
+const spd = document.getElementById('speed');
+spd.oninput = async ()=>{
+  document.getElementById('speedv').textContent = parseFloat(spd.value).toFixed(1)+'×';
+  await post('/api/control', {speed: parseFloat(spd.value)});
+};
+
+// ---- live parameter sliders (built from /api/config) ----
+const PRETTY = {thrust_scale:'thrust',drag:'drag',max_speed:'max speed',
+  basal_metabolism:'metabolism',movement_cost:'move cost',food_value:'food value',
+  food_max:'food cap',food_spawn:'food rate',repro_threshold:'repro energy',
+  repro_fraction:'repro split',mutation_rate:'mutation',sensor_range:'sensor range',
+  max_age:'max age',max_population:'pop cap',tick_hz:'tick hz'};
+let cfgTimer = {};
+async function buildParams(){
+  const cfg = await (await fetch('/api/config')).json();
+  const box = document.getElementById('params'); box.innerHTML='';
+  for(const k of Object.keys(cfg)){
+    const {value,min,max} = cfg[k];
+    const row = document.createElement('div'); row.className='row';
+    const step = (max-min) > 50 ? 1 : (max<=1 ? 0.01 : 0.1);
+    row.innerHTML = `<span class="label">${PRETTY[k]||k}</span>
+      <input type="range" min="${min}" max="${max}" step="${step}" value="${value}" data-k="${k}">
+      <span class="val" id="v_${k}">${fmt(value,step)}</span>`;
+    const inp = row.querySelector('input');
+    inp.oninput = ()=>{
+      document.getElementById('v_'+k).textContent = fmt(parseFloat(inp.value), step);
+      clearTimeout(cfgTimer[k]);
+      cfgTimer[k] = setTimeout(()=> post('/api/config',{[k]:parseFloat(inp.value)}), 60);
+    };
+    box.appendChild(row);
+  }
+}
+function fmt(v,step){ return step<1 ? v.toFixed(2) : Math.round(v); }
+async function post(url,obj){
+  try{ await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(obj)});}catch(e){}
+}
+buildParams();
+</script>
+</body>
+</html>
